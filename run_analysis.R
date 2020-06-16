@@ -1,111 +1,79 @@
-##
-# The five essential tasks to complete the Course Project are as follows.
-#
-# 1. Merges the training and the test sets to create one data set.
-# 2. Extracts only the measurements on the mean and standard deviation for each measurement. 
-# 3. Uses descriptive activity names to name the activities in the data set
-# 4. Appropriately labels the data set with descriptive variable names. 
-# 5. Creates a second, independent tidy data set with the average of each
-#    variable for each activity and each subject.
-#
-# These five steps will be accomplished via the R code below.  Appropriate
-# details concerning substeps related to these tasks will be included in the
-# comments as well.
-#
-#--------------------------------------------------------------------------------------------
-# 1. -- Merge training and test sets to create one data set.
-
-# Read in the data, label set, and subject codes for the test data
-xtestdata    <- read.table("./test/x_test.txt")         # data
-ytestdata    <- read.table("./test/y_test.txt")         # labels
-testsubjects <- read.table("./test/subject_test.txt")   # subjects
-
-
-# Read in the data,label set, and subject codes for the train data
-xtraindata    <- read.table("./train/x_train.txt")       # data
-ytraindata    <- read.table("./train/y_train.txt")       # labels
-trainsubjects <- read.table("./train/subject_train.txt") # subjects
-
-
-# merge the two raw data tables together, row-wise.
-allActivityData <- rbind(xtestdata,xtraindata)
-
-# merge the two label sets; the labels correspond to activities; these are coded, as integers
-allLabelSets    <- rbind(ytestdata,ytraindata)
-
-# merge the two subject codes lists
-allSubjectCodes <- rbind(testsubjects,trainsubjects)
-
-#--------------------------------------------------------------------------------------------
-# 2. -- Extracts only the measurements on the mean and standard deviation for each measurement.
-
-# Read in the feature names from the features.txt file.  
-featurenames   <- read.table("./features.txt")
-
-# identify all the features that are either standard deviations or means of measurements.
-# The following code identifies a vector of boolean values that correspond to the means and
-# standard deviation measures.
-meanandstddevfeatures  <- grepl("(-std\\(\\)|-mean\\(\\))",featurenames$V2)
-
-# remove columns that are not means or std. deviation features
-filteredActivityData <- allActivityData[, which(meanandstddevfeatures == TRUE)]
-
-#--------------------------------------------------------------------------------------------
-# 3. -- Uses descriptive activity names to name the activities in the data set.
-
-# Read the set of activity labels from the txt file
-activityLabels  <- read.table("./activity_labels.txt")
-
-# transform the allLabelSets from integer codes to factors
-activity <- as.factor(allLabelSets$V1)
-
-# transform the label factors into a vector of human readable activity descriptions
-levels(activity) <- activityLabels$V2
-
-# transform the subject codes to factors, as they will be used as factors later on.
-subject <- as.factor(allSubjectCodes$V1)
-
-# bind as a column the allLabels vector to the dataset
-filteredActivityData <- cbind(subject,activity,filteredActivityData)
-
-#--------------------------------------------------------------------------------------------
-# 4. -- Appropriately label the data set with descriptive variable names.  In this step, the
-#       mean and standard deviation feature names are cleaned of hyphens and parentheses, and 
-#       then attached as column names to the data set.
-
-# First, the previously used meanandstddevfeatures true/false vector is used to captue the 
-# names of all the mean and std. dev. features.
-filteredfeatures <- (cbind(featurenames,meanandstddevfeatures)[meanandstddevfeatures==TRUE,])$V2
-
-# Next, a gsub regular expression replacement is used to clean the parenthesese and hyphens, and
-# make the name lowercase. The function cleaner does the cleaning, and sapply is used to apply
-# the function to all desired featurenames.
-cleaner <- function(featurename) {
-  tolower(gsub("(\\(|\\)|\\-)","",featurename))
-}
-filteredfeatures <- sapply(filteredfeatures,cleaner)
-
-# Finally, add the filteredfeature names to the filteredActivityData set. The first column name is
-# skipped, since it already has a name, provided in step 3 above.
-names(filteredActivityData)[3:ncol(filteredActivityData)] <- filteredfeatures
-
-# write the final dataset to a CSV file, and as a text file
-write.csv(filteredActivityData,file="dataset1.csv")
-write.table(filteredActivityData, "dataset1.txt", sep="\t")
-
-#--------------------------------------------------------------------------------------------
-# 5.-- Creates a second, independent tidy data set with the average of each
-#      variable for each activity and each subject.  (note:  This is where my comfort level
-#      with this class seriously falls apart.)
-
-# using the reshape2 library, use the melt function to collapse the filteredActivityData dataframe.
+# run_analysis.R
 library(reshape2)
 
-# create the molten data set
-molten <- melt(filteredActivityData,id.vars=c("subject","activity"))
+# setwd("~/devel/coursera/getting_cleaning_data/getting_cleaning_data_project")
 
-# cast the molten data set into a collapsed tidy dataset
-tidy <- dcast(molten,subject + activity ~ variable,mean)
+# this could be completely automated to download, unzip, etc.
+# download.file(url = "https://d396qusza40orc.cloudfront.net/getdata%2Fprojectfiles%2FUCI%20HAR%20Dataset.zip", 
+#               destfile = "getdata-projectfiles-UCI HAR Dataset.zip", 
+#               method = "curl")
 
-# write the dataset to a file
-write.table(tidy, "dataset2.txt", sep="\t")
+# unzip(zipfile = "getdata-projectfiles-UCI HAR Dataset.zip")
+
+DATADIR <- "UCI HAR Dataset"
+
+# Combine Test Data
+# The "y" files are the id of activity
+# The "subject" files are the id of the subject
+
+# Create a list of activities from the y_file and activity names
+# This will allow us to use activity names instead of numbers in the tidy_data
+activities   <- read.table(file= paste(DATADIR, "activity_labels.txt", sep = "/"), 
+                         col.names = c("Activity.ID", "Activity.Name"))
+y_test       <- read.table(paste(DATADIR, "test", "y_test.txt",        sep = "/"),
+                         col.names = c("Activity.ID"))
+y_activities <- merge(y_test, activities, by.x="Activity.ID", by.y="Activity.ID")
+Activity     <- y_activities[,2]
+
+# Create a vector of feature names
+# This will allow us to apply the column names to the data
+features     <- read.table(paste(DATADIR, "features.txt", sep ="/"), 
+                           col.names = c("Feature.Number", "Feature.Name"))
+features     <- features[,2]
+
+# Create a data.frame of the subject
+subject_test <- read.table(file = paste(DATADIR, "test", "subject_test.txt", sep = "/"),
+                           col.names = c("Subject"))
+
+# Read in the test data and apply the feature column names
+x_test       <- read.table(file = paste(DATADIR, "test", "X_test.txt", sep = "/"),
+                           col.names = features)
+
+# Combine the subject, activity, and test data.frames into one data.frame
+test_data    <- cbind(subject_test, Activity, x_test)
+
+# Combine Training Data
+# This is very similar to the above, but for the training data
+y_train       <- read.table(paste(DATADIR, "train", "y_train.txt",        sep = "/"),
+                            col.names = c("Activity.ID"))
+y_activities  <- merge(y_train, activities, by.x="Activity.ID", by.y="Activity.ID")
+Activity      <- y_activities[,2]
+
+subject_train <- read.table(file = paste(DATADIR, "train", "subject_train.txt", sep = "/"),
+                            col.names = c("Subject"))
+x_train       <- read.table(file = paste(DATADIR, "train", "X_train.txt", sep = "/"),
+                            col.names = features)
+
+train_data    <- cbind(subject_train, Activity, x_train)
+
+# Combine Test & Train data (append the data.frames)
+data          <- rbind(test_data, train_data)
+
+# Keep only the columns that are mean or standard deviation
+# Use grep to find the column names that are either mean or std
+data_mean_std <- data[,c("Subject",
+                         "Activity",
+                         grep("mean|std", colnames(data), value=TRUE))
+                      ]
+
+# melt the data by subject/activity
+sub_act_data  <- melt(data_mean_std, id.vars=c("Subject","Activity"))
+
+# cast the data by subject/activity and calculate the average of the variables
+tidy_data     <- dcast(sub_act_data, Subject + Activity ~ variable, mean)
+
+# write the tidy_data to a file
+write.table(tidy_data, row.name=FALSE, file = "tidy_data.txt")
+
+# Output just the column names of tidy_data for CodeBook.md
+# cat(names(tidy_data), sep="\n")
